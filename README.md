@@ -2,7 +2,7 @@
 
 Continuous Queries are great way to get update notifications on your filters.
 Continuous query is started by creating a query task service with CONTINUOUS
-option. And then setting up a notification on that service. A continiuous query
+option. And then setting up a notification on that service. A continuous query
 task does two things:
  1. It will give the historical, existing data as the first notification
  2. It will give you any further updates
@@ -13,7 +13,7 @@ The CONTINUOUS option creates a long running query filter that process all
 updates to the local index. The query specification is compiled into an
 efficient query filter that evaluates the document updates, and if the filter
 evaluates to true, the query task service is PATCHed with a document results reflecting
-the self link (and document if EXPAND is set) that changed.
+the self-link (and document if EXPAND is set) that changed.
 
 The continuous query task service acts as a node wide black board, or notification
 service allowing clients or services to receive notifications without having to
@@ -49,10 +49,10 @@ QueryTask queryTask = QueryTask.Builder.create()
         .setQuery(query).build();
 ```
 
-By default query tasks services expire after few (10 at the time of writing)
-minutes. If your continueos result collection is suppose to complete within
+By default, query tasks services expire after few (10 at the time of writing)
+minutes. If your continuous result collection is supposed to complete within
 that time limit then you are fine, otherwise you *SHOULD* increase this expiry
-limit to your require time limit. Following code line is setting the expiry to
+limit to require time limit. Following code line is setting the expiry to
 be unlimited for query task service we are creating.
 
 ```
@@ -97,7 +97,7 @@ Json payload of above query.
 
 After sending the query we need to capture the returned query task service link
 and subscribe to it for any updates.  *NOTE:* One important thing to note here
-is that continues query task service is a long running service that queries the
+is that continuous query task service being a long running service that queries the
 index regularly for updates. Hence this should be used with care and should be
 called by a single host. If following code is running on a replicated service
 on multiple nodes, then we would be triggering this continues query task
@@ -124,7 +124,7 @@ this.clientHost.sendRequest(post);
 ## Subscribe to the results
 
 Notice above, in the completion handler we are calling
-`subscribeToContinuousQueryTask` (shown bellow) method with the selfLink of the
+`subscribeToContinuousQueryTask` (shown below) method with the self-Link of the
 query task service.
 
 ```java
@@ -168,7 +168,7 @@ public void processResults(Operation op) {
 ## FAQ
 
 #### Can I do continuous query on a stateless service?
-No, because queries work on statfull and persisted services.
+No, because queries work on stateful and persisted services.
 
 #### How can I see list of all created continuous query services?
 You can do curl on `http://host/core/query-tasks` and `http://host/core/local-query-tasks` to see list of all query task services.
@@ -188,7 +188,7 @@ service when it was deleted. The documentUpdateAction will be DELETE.
 
 You will receive notifications in the form of PATCH operations, with the body
 being a QueryTask, with the results.documentLinks/documents being filled in
-with the specific update to a service that matched the query  if your query no
+with the specific update to a service that matched the query if your query no
 longer match anything, you get no notifications. You can cancel it, have it
 expire, etc.
 
@@ -201,12 +201,12 @@ Make sure you set expire to be short.
 It never ends, until it gets expired. You will keep getting notification as
 long as there are updates that fulfil continuous query task's filter.
 
-#### How do you calculate a total sum using a continuous query when you don't know when your're done getting update notifications?
+#### How do you calculate a total sum using a continuous query when you don't know when your are done getting update notifications?
 Well a total sum implies you know the full set that you want to compute it
 over, which means that you can use a normal query. If you want to keep
 counting, and do a running sum, then you need to use a continuous query.
 
 #### Ok, I am still confused. What does a continuous query actually do?
-A continiuous query does two things:
+A continuous query does two things:
  1. It will give the historical, existing data as the first notification
  2. It will give you any further updates
