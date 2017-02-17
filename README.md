@@ -10,17 +10,18 @@ The continuous query task acts as a node wide black board, or notification
 service allowing clients or services to receive notifications without having to
 subscribe to potentially millions of discrete services.
 
-Following is the example of QueryTask in which CONTINUOUS query option is selected.
+Following is the simple example of QueryTask in which CONTINUOUS query option is selected.
+This query task is filtering the results by Kind field clause.
 
-```{java echo=false}
+```java
+QueryTask.Query query = QueryTask.Query.Builder.create()
+        .addKindFieldClause(Employee.class)
+        .build();
+                
 QueryTask queryTask = QueryTask.Builder.create()
-       .addOption(QueryOption.EXPAND_CONTENT)
-       .addOption(QueryOption.CONTINUOUS)
-       .setQuery(query).build();
-
-Operation post = Operation.createPost(this.clientHost, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
-       .setBody(queryTask)
-       .setReferer(this.clientHost.getUri());
+        .addOption(QueryOption.EXPAND_CONTENT)
+        .addOption(QueryOption.CONTINUOUS)
+        .setQuery(query).build();
 ```
 
 Json payload of above query.
@@ -56,3 +57,58 @@ Json payload of above query.
     "documentExpirationTimeMicros": 0
 }
 ```
+
+After sending the query we need to capture the returned query task service link and subscribe to it for any updates.
+
+```java
+Operation post = Operation.createPost(this.clientHost, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+       .setBody(queryTask)
+       .setReferer(this.clientHost.getUri());
+
+post.setCompletion((o, e) -> {
+   if (e != null) {
+       System.out.printf("Query failed %s", e.toString());
+       return;
+   }
+   QueryTask queryResponse = o.getBody(QueryTask.class);
+   subscribeToContinuousQueryTask(this.clientHost, queryResponse.documentSelfLink);
+);
+
+ this.clientHost.sendRequest(post);
+```
+
+Notice above the in the completion handler we are calling `subscribeToContinuousQueryTask` (shown bellow) method with the selfLink of the query task service.
+
+```java
+public void subscribeToContinuousQueryTask(ServiceHost host, String serviceLink) {
+     Consumer<Operation> target = this::processResults;
+     
+     Operation subPost = Operation
+            .createPost(UriUtils.buildUri(host, serviceLink))
+            .setReferer(host.getUri());
+            
+     host.startSubscriptionService(subPost, target);
+}
+
+```
+
+`subscribeToContinuousQueryTask` is just calling `startSubscriptionService` method on the local host that will listen for any notifications from the the target service and call our target method(`processResults`).
+
+Following is the basic implementation of `processResults` that would be called whenever the query task service on the target host has any new data for us to process. We check for presence of the results and then loop over all the result documents to process. 
+
+```java
+public void processResults(Operation op) {
+     QueryTask body = op.getBody(QueryTask.class);
+
+     if (body.results == null || body.results.documentLinks.isEmpty()) {
+          return;
+     }
+
+     for (Object doc : body.results.documents.values()) {
+          Employee state = Utils.fromJson(doc, Employee.class);
+          System.out.printf("Name %s \n", state.name);
+     }
+}
+```
+
+
