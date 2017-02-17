@@ -12,14 +12,7 @@ subscribe to potentially millions of discrete services.
 
 Following is the example of QueryTask in which CONTINUOUS query option is selected.
 
-<style>
-div.hidecode + pre {display: none}
-</style>
-
-<div class="hidecode"></div>
->!test 
-
-```{java}
+```{java echo=false}
 QueryTask queryTask = QueryTask.Builder.create()
        .addOption(QueryOption.EXPAND_CONTENT)
        .addOption(QueryOption.CONTINUOUS)
