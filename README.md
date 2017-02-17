@@ -1,45 +1,65 @@
-# Photon Controller
+# Continuous Queries
 
-Photon Controller is an open-source system for managing hardware, containers, and clusters at scale.
+The CONTINUOUS option creates a long running query filter that process all
+updates to the local index. The query specification is compiled into an
+efficient query filter that evaluates the document updates, and the filter
+evaluates to true, the query task is PATCHed with a document results reflecting
+the self link (and document if EXPAND is set) that changed.
 
-Photon Controller is designed to support:
-* **High Scale**: Manage tens of thousands of compute nodes in one deployment.
-* **High Churn**: Handle thousands of concurrent API requests.
-* **Multiple Tenants**: Allocate and manage resources for many users and groups in a single deployment.
-* **Container Frameworks**: Easily spin up instances of [Kubernetes](http://kubernetes.io), [Mesos](http://mesos.apache.org), and [Docker Swarm](http://docs.docker.com/swarm/) in seconds.
+The continuous query task acts as a node wide black board, or notification
+service allowing clients or services to receive notifications without having to
+subscribe to potentially millions of discrete services.
 
-## Participation
+Following is the example of QueryTask in which CONTINUOUS query option is selected.
 
-If you'd like to become a part of the Photon Controller community, here are some ways to connect:
+<style>
+div.hidecode + pre {display: none}
+</style>
 
-* Visit us on [GitHub](http://vmware.github.io/photon-controller)
-* Join the [Photon Controller group](http://groups.google.com/group/photon-controller) on Google Groups
-* Ask questions using the "photon-controller" tag on [Stack Overflow](http://stackoverflow.com/)
+<div class="hidecode"></div>
+>!test 
 
-If you're looking to play with the code, keep reading.
+```{java}
+QueryTask queryTask = QueryTask.Builder.create()
+       .addOption(QueryOption.EXPAND_CONTENT)
+       .addOption(QueryOption.CONTINUOUS)
+       .setQuery(query).build();
 
-## Repository
+Operation post = Operation.createPost(this.clientHost, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
+       .setBody(queryTask)
+       .setReferer(this.clientHost.getUri());
+```
 
-The product is arranged in a single repository, with subdirectories arranged by language. See the individual READMEs for instructions on building the code.
+Json payload of above query.
 
-* [Devbox](devbox/README.md): Devbox uses [Vagrant](http://vagrantup.com) to create a small standalone deployment of Photon Controller for test purposes.
-* [Java](java/README.md): Most of the Photon Controller management plane is written in Java, with many individual services implemented on top of the [Xenon framework](http://vmware.github.io/xenon).
-* [Python](python/README.md): The ESX agent and its test and analysis collateral are implemented in Python.
-* [Ruby](ruby/README.md): The Photon Controller CLI is implemented in Ruby, as are the integration tests for the product.
-  * **Note**: The Ruby CLI will soon be replaced with a Golang version.
-* [Thrift](thrift/README.md): Photon Controller uses [Apache Thrift](http://thrift.apache.org) for RPC communication between the management plane and the agent.
-
-## Development
-
-If you'd like to make changes to Photon Controller, you can submit pull requests on [GitHub](http://github.com/vmware/photon-controller).
-
-If you have not signed our contributor license agreement (CLA), our bot will update the issue when you open a [Pull Request](https://help.github.com/articles/creating-a-pull-request). For any questions about the CLA process, please refer to our [FAQ](https://cla.vmware.com/faq).
-
-All pull requests satisfy the following criteria:
-
-1. Pass **unit tests** according to the instructions in the appropriate language-specific README file.
-2. Pass **integration tests** according to the instructions for [Devbox](devbox/README.md).
-
-We will run any changes through our own validation process which ensures that both conditions are met, but it's in everyone's interest if you take care of this on your own first.
-
-Thanks, and enjoy!
+```json
+{
+    "taskInfo": {
+        "isDirect": false
+    },
+    "querySpec": {
+        "query": {
+            "occurance": "MUST_OCCUR",
+            "booleanClauses": [
+                {
+                    "occurance": "MUST_OCCUR",
+                    "term": {
+                        "propertyName": "documentKind",
+                        "matchValue": "com:vmware:myproject:EmployeeService:Employee",
+                        "matchType": "TERM"
+                    }
+                }
+            ]
+        },
+        "options": [
+            "CONTINUOUS",
+            "EXPAND_CONTENT"
+        ]
+    },
+    "indexLink": "/core/document-index",
+    "nodeSelectorLink": "/core/node-selectors/default",
+    "documentVersion": 0,
+    "documentUpdateTimeMicros": 0,
+    "documentExpirationTimeMicros": 0
+}
+```
