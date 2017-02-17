@@ -1,5 +1,14 @@
 # Continuous Queries
 
+Continuous Queries are great way to get update notifications on your filters.
+Continuous query is started by creating a query task service with CONTINUOUS
+option. And then setting up a notification on that service. A continiuous query
+task does two things:
+ 1. It will give the historical, existing data as the first notification
+ 2. It will give you any further updates
+
+In the remainder of the document we expect you have basic understanding of [[QueryTaskService]].
+
 The CONTINUOUS option creates a long running query filter that process all
 updates to the local index. The query specification is compiled into an
 efficient query filter that evaluates the document updates, and if the filter
@@ -14,10 +23,13 @@ Here are the basic steps required to efficiently use the continuous query tasks.
 
 1. Create continuous query task request
 2. Send query task request
-3. On completion of the request, subscribe to the created query task service
-4. Implement handler that will be called on notifications from query task service with latest results
+3. On completion of the request, subscribe to the created query task service self-link
+4. Implement handler that will be called on notifications from query task service with updates
 
-We can avoid setting up the subscription with query task here, and instead do the polling on this continues query task service for updates. But that would not be efficient. Instead we recommend using subscription model here and get the results whenever they are available from our friend on the other side.
+We can avoid setting up the subscription with query task here, and instead do
+the polling on this continues query task service for updates. But that would
+NOT be efficient. Instead we recommend using subscription model here and get
+the results whenever they are available from this friend on the other side.
 
 In rest of the document we will go over the steps mentioned above.
 
@@ -30,19 +42,22 @@ This query task is filtering the results based on Kind field clause.
 QueryTask.Query query = QueryTask.Query.Builder.create()
         .addKindFieldClause(Employee.class)
         .build();
-                
+
 QueryTask queryTask = QueryTask.Builder.create()
         .addOption(QueryOption.EXPAND_CONTENT)
         .addOption(QueryOption.CONTINUOUS)
         .setQuery(query).build();
 ```
 
-By default query tasks services expire after few (10 at the time of writing) minutes. If your continueos result collection is suppose to complete within that time limit then you are fine, otherwise you *SHOULD* increase this expiry limit to your require time limit. Following code line is setting the expiry to be unlimited for query task service we are creating.
+By default query tasks services expire after few (10 at the time of writing)
+minutes. If your continueos result collection is suppose to complete within
+that time limit then you are fine, otherwise you *SHOULD* increase this expiry
+limit to your require time limit. Following code line is setting the expiry to
+be unlimited for query task service we are creating.
 
 ```
 querytask.documentExpirationTimeMicros = Long.MAX_VALUE;
 ```
-
 
 Json payload of above query.
 
@@ -80,9 +95,14 @@ Json payload of above query.
 
 ## Send the request
 
-After sending the query we need to capture the returned query task service link and subscribe to it for any updates.
-*NOTE:* One important thing to note here is that continues query task service is a long running service that queries the
-index regularly for updates. Hence this should be used with care and should be called by a single host. If following code is running on a replicated service on multiple nodes, then we would be triggering this continues query task multiple times on our targetHost, which would be a over kill and can be big performance hit on your poor hosts. 
+After sending the query we need to capture the returned query task service link
+and subscribe to it for any updates.  *NOTE:* One important thing to note here
+is that continues query task service is a long running service that queries the
+index regularly for updates. Hence this should be used with care and should be
+called by a single host. If following code is running on a replicated service
+on multiple nodes, then we would be triggering this continues query task
+multiple times on our targetHost, which would be a over kill and can be big
+performance hit on your poor hosts.
 
 ```java
 Operation post = Operation.createPost(targetHost, ServiceUriPaths.CORE_LOCAL_QUERY_TASKS)
@@ -103,26 +123,33 @@ this.clientHost.sendRequest(post);
 
 ## Subscribe to the results
 
-Notice above, in the completion handler we are calling `subscribeToContinuousQueryTask` (shown bellow) method with the selfLink of the query task service.
+Notice above, in the completion handler we are calling
+`subscribeToContinuousQueryTask` (shown bellow) method with the selfLink of the
+query task service.
 
 ```java
 public void subscribeToContinuousQueryTask(ServiceHost host, String serviceLink) {
      Consumer<Operation> target = this::processResults;
-     
+
      Operation subPost = Operation
           .createPost(UriUtils.buildUri(host, serviceLink))
           .setReferer(host.getUri());
-            
+
      host.startSubscriptionService(subPost, target);
 }
 
 ```
 
-`subscribeToContinuousQueryTask` is just calling `startSubscriptionService` method on the local host that will listen for any notifications from the the target service and call our target method(`processResults`).
+`subscribeToContinuousQueryTask` is just calling `startSubscriptionService`
+method on the local host that will listen for any notifications from the the
+target service and call our target method(`processResults`).
 
 ## Process the results
 
-Following is the basic implementation of `processResults` that would be called whenever the query task service on the target host has any new data for us to process. We check for presence of the results and then loop over all the result documents to process. 
+Following is the basic implementation of `processResults` that would be called
+whenever the query task service on the target host has any new data for us to
+process. We check for presence of the results and then loop over all the result
+documents to process.
 
 ```java
 public void processResults(Operation op) {
@@ -140,35 +167,46 @@ public void processResults(Operation op) {
 ```
 ## FAQ
 
-1. Can I do continuous query on a stateless service?
-A. No, because queries work on statfull and persisted services.
+#### Can I do continuous query on a stateless service?
+No, because queries work on statfull and persisted services.
 
-2. How can I see list of all created continuous query services?
-A. You can do curl on http://<host>/core/query-tasks and http://<host>/core/local-query-tasks to see list of all query task services.
+#### How can I see list of all created continuous query services?
+You can do curl on `http://host/core/query-tasks` and `http://host/core/local-query-tasks` to see list of all query task services.
 
-3. My continuous query task is not there after few minutes. Why it got disappeared?
-A. It got expired after 10 minutes. Set it to never expire using `querytask.documentExpirationTimeMicros = Long.MAX_VALUE;`
+#### My continuous query task is not there after few minutes. Why it got disappeared?
+It got expired after 10 minutes. Set it to never expire using `querytask.documentExpirationTimeMicros = Long.MAX_VALUE;`
 
-4. Why I am not getting any results in subscription of my continues query tasks service?
-A. Subscription handler will be called when there are any updates. Make sure your updates are being reflected on the index.
+#### Why I am not getting any results in subscription of my continues query tasks service?
+Subscription handler will be called when there are any updates. Make sure your
+updates are being reflected on the index.
 
-5. Let’s say I’ve got a query for “all example services”, and one of the example services is deleted: do I learn that it’s no longer in the query result?
-A. You will get a PATCH, with the body being the last version of the example service when it was deleted. The documentUpdateAction will be DELETE.
+#### Let’s say I’ve got a query for “all example services”, and one of the example services is deleted: do I learn that it’s no longer in the query result?
+You will get a PATCH, with the body being the last version of the example
+service when it was deleted. The documentUpdateAction will be DELETE.
 
-6. You said, any update that satisfies the query filter will cause the results to be updated and a self PATCH to be sent on the service. Does that mean I’ll see a diff of new things that match that query?
-A. You will receive notifications in the form of PATCH operations, with the body being a QueryTask, with the results.documentLinks/documents being filled in with the specific update to a service that matched the query  
-if your query no longer match anything, you get no notifications. You can cancel it, have it expire, etc.
+#### You said, any update that satisfies the query filter will cause the results to be updated and a self PATCH to be sent on the service. Does that mean I’ll see a diff of new things that match that query?
 
-7. I want to get notification on every single create, update, delete on all services on my host. Will a single continuous query task do that?
-A. Please don't try this at your home(production). Yes, you can do that, but it will be a big performance hit on your host for the duration of your query task. Make sure you set expire to be short.
+You will receive notifications in the form of PATCH operations, with the body
+being a QueryTask, with the results.documentLinks/documents being filled in
+with the specific update to a service that matched the query  if your query no
+longer match anything, you get no notifications. You can cancel it, have it
+expire, etc.
 
-8. When does a continuous query ends?
-A. It never ends, until it gets expired. You will keep getting notification as long as there are updates that fulfil continuous query task's filter.
+#### I want to get notification on every single create, update, delete on all services on my host. Will a single continuous query task do that?
+Please don't try this at your home(production). Yes, you can do that, but it
+will be a big performance hit on your host for the duration of your query task.
+Make sure you set expire to be short.
 
-9. How do you calculate a total sum using a continuous query when you don't know when your're done getting update notifications? 
-A. Well a total sum implies you know the full set that you want to compute it over, which means that you can use a normal query. If you want to keep counting, and do a running sum, then you need to use a continuous query.
+#### When does a continuous query ends?
+It never ends, until it gets expired. You will keep getting notification as
+long as there are updates that fulfil continuous query task's filter.
 
-10. Ok, I am still confused. What does a continuous query actually do?
-A. A continiuous query does two things:
-  1) It will give the historical, existing data as the first notification
-  2) It will give you any further updates
+#### How do you calculate a total sum using a continuous query when you don't know when your're done getting update notifications?
+Well a total sum implies you know the full set that you want to compute it
+over, which means that you can use a normal query. If you want to keep
+counting, and do a running sum, then you need to use a continuous query.
+
+#### Ok, I am still confused. What does a continuous query actually do?
+A continiuous query does two things:
+ 1. It will give the historical, existing data as the first notification
+ 2. It will give you any further updates
